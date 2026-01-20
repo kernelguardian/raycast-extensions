@@ -8,13 +8,14 @@ import {
   getPreferenceValues,
   Icon,
   List,
+  LocalStorage,
   openExtensionPreferences,
   showHUD,
   showToast,
   Toast,
 } from "@raycast/api";
 import { useCallback, useEffect, useState } from "react";
-import { OTPEntry, OTPSource, Preferences } from "./types";
+import { OTPEntry, OTPSource } from "./types";
 import {
   imessageSource,
   gmailSource,
@@ -23,6 +24,7 @@ import {
   isGmailAuthorized,
   checkMessagesAccess,
 } from "./sources";
+import { getCachedOTPs, OTP_CACHE_KEY } from "./background-refresh";
 
 const SOURCE_ICONS: Record<OTPSource, Icon> = {
   imessage: Icon.Message,
@@ -88,9 +90,7 @@ export default function ListOTPs() {
       setGmailAuthorized(authorized);
     }
 
-    const results = await Promise.allSettled(
-      sources.map((source) => source.fetchOTPs(lookbackMinutes))
-    );
+    const results = await Promise.allSettled(sources.map((source) => source.fetchOTPs(lookbackMinutes)));
 
     for (const result of results) {
       if (result.status === "fulfilled") {
@@ -100,12 +100,30 @@ export default function ListOTPs() {
 
     allOTPs.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
+    // Update cache
+    await LocalStorage.setItem(OTP_CACHE_KEY, JSON.stringify(allOTPs));
+
     setOTPs(allOTPs);
     setIsLoading(false);
   }, [lookbackMinutes, prefs.enableGmail, prefs.gmailClientId]);
 
   useEffect(() => {
+    // Load from cache first for instant display
+    getCachedOTPs().then((cached) => {
+      if (cached.length > 0) {
+        setOTPs(cached);
+      }
+    });
+
+    // Then fetch fresh data
     loadOTPs();
+
+    // Background refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadOTPs();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, [loadOTPs]);
 
   const handleCopy = useCallback(
@@ -208,10 +226,9 @@ export default function ListOTPs() {
 
   const hasEnabledSource = prefs.enableIMessage || prefs.enableGmail || prefs.enableICloudMail;
 
-  const needsGmailAuth = prefs.enableGmail && prefs.gmailClientId && !gmailAuthorized;
+  const needsGmailAuth = prefs.enableGmail && prefs.gmailClientId && !gmailAuthorized && !isLoading;
   const needsGmailConfig = prefs.enableGmail && !prefs.gmailClientId;
-  const needsICloudConfig =
-    prefs.enableICloudMail && (!prefs.icloudEmail || !prefs.icloudAppPassword);
+  const needsICloudConfig = prefs.enableICloudMail && (!prefs.icloudEmail || !prefs.icloudAppPassword);
   const needsMessagesAccess = prefs.enableIMessage && !checkMessagesAccess();
 
   if (!hasEnabledSource) {
@@ -222,11 +239,7 @@ export default function ListOTPs() {
           description="Enable at least one source in extension preferences"
           actions={
             <ActionPanel>
-              <Action
-                title="Open Preferences"
-                icon={Icon.Gear}
-                onAction={openExtensionPreferences}
-              />
+              <Action title="Open Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
             </ActionPanel>
           }
         />
@@ -259,11 +272,7 @@ export default function ListOTPs() {
             icon={{ source: Icon.Envelope, tintColor: Color.Orange }}
             actions={
               <ActionPanel>
-                <Action
-                  title="Open Preferences"
-                  icon={Icon.Gear}
-                  onAction={openExtensionPreferences}
-                />
+                <Action title="Open Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
               </ActionPanel>
             }
           />
@@ -278,11 +287,7 @@ export default function ListOTPs() {
             icon={{ source: Icon.Cloud, tintColor: Color.Orange }}
             actions={
               <ActionPanel>
-                <Action
-                  title="Open Preferences"
-                  icon={Icon.Gear}
-                  onAction={openExtensionPreferences}
-                />
+                <Action title="Open Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
               </ActionPanel>
             }
           />
@@ -314,11 +319,7 @@ export default function ListOTPs() {
           actions={
             <ActionPanel>
               <Action title="Refresh" icon={Icon.ArrowClockwise} onAction={loadOTPs} />
-              <Action
-                title="Open Preferences"
-                icon={Icon.Gear}
-                onAction={openExtensionPreferences}
-              />
+              <Action title="Open Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
             </ActionPanel>
           }
         />
@@ -356,11 +357,7 @@ export default function ListOTPs() {
               actions={
                 <ActionPanel>
                   <ActionPanel.Section>
-                    <Action
-                      title="Copy to Clipboard"
-                      icon={Icon.Clipboard}
-                      onAction={() => handleCopy(entry)}
-                    />
+                    <Action title="Copy to Clipboard" icon={Icon.Clipboard} onAction={() => handleCopy(entry)} />
                     <Action.Paste title="Paste in Active App" content={entry.code} />
                   </ActionPanel.Section>
 
@@ -375,11 +372,7 @@ export default function ListOTPs() {
 
                   {(entry.source === "gmail" || entry.source === "icloud") && (
                     <ActionPanel.Section>
-                      <Action
-                        title="Mark as Read"
-                        icon={Icon.Eye}
-                        onAction={() => handleMarkAsRead(entry)}
-                      />
+                      <Action title="Mark as Read" icon={Icon.Eye} onAction={() => handleMarkAsRead(entry)} />
                       <Action
                         title="Delete Message"
                         icon={Icon.Trash}

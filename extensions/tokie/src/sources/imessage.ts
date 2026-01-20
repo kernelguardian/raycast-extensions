@@ -3,7 +3,7 @@ import { existsSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { getPreferenceValues } from "@raycast/api";
-import { DataSource, OTPEntry, Preferences } from "../types";
+import { DataSource, OTPEntry } from "../types";
 import { extractOTP } from "../otp-detector";
 
 const MESSAGES_DB_PATH = join(homedir(), "Library", "Messages", "chat.db");
@@ -75,12 +75,7 @@ export const imessageSource: DataSource = {
   },
 
   async fetchOTPs(lookbackMinutes: number): Promise<OTPEntry[]> {
-    console.log(
-      "[DEBUG] iMessage fetchOTPs called, enabled:",
-      this.isEnabled(),
-      "configured:",
-      this.isConfigured()
-    );
+    console.log("[DEBUG] iMessage fetchOTPs called, enabled:", this.isEnabled(), "configured:", this.isConfigured());
 
     if (!this.isEnabled() || !this.isConfigured()) {
       return [];
@@ -121,13 +116,10 @@ export const imessageSource: DataSource = {
         LIMIT 100
       `;
 
-      const result = execSync(
-        `sqlite3 -separator $'\\t' "${MESSAGES_DB_PATH}" "${query.replace(/"/g, '\\"')}"`,
-        {
-          encoding: "utf-8",
-          timeout: 5000,
-        }
-      );
+      const result = execSync(`sqlite3 -separator $'\\t' "${MESSAGES_DB_PATH}" "${query.replace(/"/g, '\\"')}"`, {
+        encoding: "utf-8",
+        timeout: 5000,
+      });
 
       if (!result || result.trim() === "") {
         console.log("[DEBUG] iMessage: No messages found in database");
@@ -171,12 +163,7 @@ export const imessageSource: DataSource = {
       for (const msg of messages) {
         if (!msg.text) continue;
 
-        console.log(
-          "[DEBUG] iMessage: Checking message from",
-          msg.sender,
-          "- text:",
-          msg.text.slice(0, 100)
-        );
+        console.log("[DEBUG] iMessage: Checking message from", msg.sender, "- text:", msg.text.slice(0, 100));
         const otpMatch = extractOTP(msg.text);
         console.log("[DEBUG] iMessage: OTP match result:", otpMatch);
         if (otpMatch) {
